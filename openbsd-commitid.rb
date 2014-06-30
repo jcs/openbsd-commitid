@@ -136,16 +136,24 @@ class Scanner
     raise if !fid
 
     rcs.revisions.each do |r,rev|
-      rid = @db.execute("SELECT id FROM revisions WHERE file_id = ? AND " +
-        "version = ?", [ fid["id"], r ]).first
+      rid = @db.execute("SELECT id, commitid FROM revisions WHERE " +
+        "file_id = ? AND version = ?", [ fid["id"], r ]).first
 
-      if !rid
+      if rid
+        if rid["commitid"] != rev.commitid
+          puts "  updated #{r} to commitid #{rev.commitid}" +
+            (rid["commitid"].to_s == "" ? "" : " from #{rid["commitid"]}")
+
+          @db.execute("UPDATE revisions SET commitid = ? WHERE file_id = ? " +
+            "AND version = ?", [ rev.commitid, fid["id"], rev.revision ])
+        end
+      else
+        puts "  inserted #{r}, authored #{rev.date} by #{rev.author}" +
+          (rev.commitid ? ", commitid #{rev.commitid}" : "")
+
         @db.execute("INSERT INTO revisions (file_id, date, version, author, " +
           "commitid, log) VALUES (?, ?, ?, ?, ?, ?)", [ fid["id"], rev.date,
           rev.revision, rev.author, rev.commitid, rev.log ])
-
-        puts "  inserted #{r}, authored #{rev.date} by #{rev.author}" +
-          (rev.commitid ? ", commitid #{rev.commitid}" : "")
       end
     end
   end
@@ -270,21 +278,39 @@ class Scanner
   end
 
   def repo_surgery(checked_out_dir)
-    Dir.chdir(checked_out_dir)
-    system("cvs", "-q", "up", "-PACd")
+    puts "updating repo at #{checked_out_dir}"
 
-    @db.execute("SELECT files.file, changesets.commitid, revisions.version " +
-    "FROM revisions LEFT OUTER JOIN files ON files.id = file_id " +
-    "LEFT OUTER JOIN changesets ON revisions.changeset_id = changesets.id " +
-    "WHERE revisions.commitid IS NULL ORDER BY files.id") do |rev|
-      system("cvs", "-q", "admin", "-C",
+    # pass -d and not -P to build and keep empty dirs
+    Dir.chdir(checked_out_dir)
+    system("cvs", "-q", "up", "-ACd")
+
+    puts "adding commits to checked-out repo"
+
+    csid = nil
+    @db.execute("SELECT
+    files.file, changesets.commitid, changesets.author, changesets.date,
+    revisions.version
+    FROM revisions
+    LEFT OUTER JOIN files ON files.id = file_id
+    LEFT OUTER JOIN changesets ON revisions.changeset_id = changesets.id
+    WHERE revisions.commitid IS NULL
+    ORDER BY changesets.date ASC, files.file ASC") do |rev|
+      if csid == nil || rev["commitid"] != csid
+        puts " commit #{rev["commitid"]} at #{Time.at(rev["date"])} by " +
+          rev["author"]
+        csid = rev["commitid"]
+      end
+
+      puts "  #{rev["file"]} #{rev["version"]}"
+
+      system("cvs", "-Q", "admin", "-C",
         "#{rev["version"]}:#{rev["commitid"]}", rev["file"].gsub(/,v$/, ""))
     end
   end
 end
 
 sc = Scanner.new("openbsdv.db", "/var/cvs/src/")
-#sc.recurse
+sc.recurse
 sc.group_into_changesets
 sc.stray_commitids_to_changesets
 sc.fill_in_changeset_data
