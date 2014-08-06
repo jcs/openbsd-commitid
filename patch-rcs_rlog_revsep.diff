@@ -1,0 +1,25 @@
+# change revision separator to something unique, since all dashes appear inside
+# of some existing commit messages, making it impossible to accurately parse
+# rlog output
+#
+# not to be committed
+
+Index: usr.bin/rcs/rlog.c
+===================================================================
+RCS file: /cvs/src/usr.bin/rcs/rlog.c,v
+retrieving revision 1.67
+diff -u -p -u -p -r1.67 rlog.c
+--- usr.bin/rcs/rlog.c	7 Jan 2014 14:08:16 -0000	1.67
++++ usr.bin/rcs/rlog.c	6 Aug 2014 23:38:02 -0000
+@@ -47,9 +47,9 @@ static void	rlog_file(const char *, RCSF
+ static void	rlog_rev_print(struct rcs_delta *);
+ 
+ #define RLOG_OPTSTRING	"d:hLl::NqRr::s:TtVw::x::z::"
+-#define REVSEP		"----------------------------"
++#define REVSEP		"----------------------------###"
+ #define REVEND \
+- "============================================================================="
++ "=============================================================================###"
+ 
+ static int dflag, hflag, Lflag, lflag, rflag, tflag, Nflag, wflag;
+ static char *llist = NULL;
