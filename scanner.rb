@@ -11,7 +11,7 @@ class Scanner
       (commitid)"
 
     @db.execute "CREATE TABLE IF NOT EXISTS files
-      (id integer primary key, file text)"
+      (id integer primary key, file text, in_attic integer)"
     @db.execute "CREATE UNIQUE INDEX IF NOT EXISTS u_file ON files
       (file)"
 
@@ -49,14 +49,23 @@ class Scanner
   end
 
   def scan(f)
-    canfile = f[@root.length, f.length - @root.length].gsub(/\/Attic\//, "/")
-    puts " scanning file #{canfile}"
+    canfile = f[@root.length, f.length - @root.length].gsub(/(^|\/)Attic\//,
+      "/")
+    in_attic = !!f.match(/(^|\/)Attic\//)
+    puts " scanning file #{canfile}" + (in_attic ? " (in attic)" : "")
 
     rcs = RCSFile.new(f)
 
-    fid = @db.execute("SELECT id FROM files WHERE file = ?", [ canfile ]).first
-    if !fid
-      @db.execute("INSERT INTO files (file) VALUES (?)", [ canfile ])
+    fid = @db.execute("SELECT id, in_attic FROM files WHERE file = ?",
+      [ canfile ]).first
+    if fid
+      if fid["in_attic"].to_i != (in_attic ? 1 : 0)
+        @db.execute("UPDATE files SET in_attic = ? WHERE id = ?",
+          [ (in_attic ? 1 : 0), fid["id"] ])
+      end
+    else
+      @db.execute("INSERT INTO files (file, in_attic) VALUES (?, ?)",
+        [ canfile, in_attic ? 1 : 0 ])
       fid = @db.execute("SELECT id FROM files WHERE file = ?",
         [ canfile ]).first
     end
@@ -111,6 +120,8 @@ class Scanner
     last_row = {}
     cur_set = []
 
+    # TODO: don't conditionalize with null changeset_ids, to allow this to run
+    # incrementally and match new commits to old changesets
     @db.execute("SELECT * FROM revisions WHERE changeset_id IS NULL ORDER " +
     "BY author ASC, date ASC") do |row|
       # commits by the same author with the same log message (unless they're
@@ -211,15 +222,14 @@ class Scanner
     puts "checking out repo \"#{tree}\" to #{tmp_dir}"
 
     Dir.chdir(tmp_dir)
-    # don't pass -P because we'll need empty dirs around for Attic changes
     system("cvs", "-Q", "-d", cvs_root, "co", tree)
 
     Dir.chdir(tmp_dir + "/#{tree}")
 
     csid = nil
     @db.execute("SELECT
-    files.file, changesets.commitid, changesets.author, changesets.date,
-    revisions.version
+    files.file, files.in_attic, changesets.commitid, changesets.author,
+    changesets.date, revisions.version
     FROM revisions
     LEFT OUTER JOIN files ON files.id = file_id
     LEFT OUTER JOIN changesets ON revisions.changeset_id = changesets.id
@@ -233,8 +243,23 @@ class Scanner
 
       puts "  #{rev["file"]} #{rev["version"]}"
 
-      system("cvs", "-Q", "admin", "-C",
-        "#{rev["version"]}:#{rev["commitid"]}", rev["file"].gsub(/,v$/, ""))
+      if rev["in_attic"].to_i == 1
+        # for a deleted file to be operated by with cvs admin, it must be
+        # present in the CVS/Entries files, so just check out a known version
+        # that will put it there.  otherwise cvs admin will fail silently
+        system("cvs", "-Q", "up", "-r1.1", rev["file"].gsub(/,v$/, ""))
+      end
+
+      output = nil
+      IO.popen(ca = [ "cvs", "admin", "-C",
+      "#{rev["version"]}:#{rev["commitid"]}",
+      rev["file"].gsub(/,v$/, "") ]) do |admin|
+        output = admin.read
+      end
+
+      if !output.match(/RCS file:/)
+        raise "failed cvs admin command #{ca.inspect}"
+      end
     end
 
     puts "cleaning up #{tmp_dir}/#{tree}"
