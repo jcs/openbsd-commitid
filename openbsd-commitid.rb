@@ -1,5 +1,42 @@
 #!/usr/bin/ruby
+#
+# download pristine sources to /var/cvs:
+#  $ cvsync
+#
+# duplicate tree to /var/cvs-commitid
+#  $ rsync -a --delete /var/cvs/. /var/cvs-commitid/.
+#
+# read rcs files in /var/cvs-commitid, generate changesets, use 'cvs admin' to
+# add commitids back to rcs files
+#  $ ruby openbsd-commitid.rb
+#
 
+CVSROOT = "/var/cvs-commitid/"
+CVSTMP = "/var/cvs-tmp/"
+CVSTREES = [ "src", "ports", "www", "xenocara" ]
+
+CVSTREES.each do |tree|
+  if Dir.exists?("#{CVSTMP}/#{tree}/CVS")
+    raise "clean out #{CVSTMP} first"
+  end
+end
+
+PWD = Dir.pwd
+
+CVSTREES.each do |tree|
+  sc = Scanner.new(PWD + "/openbsd-#{tree}.db", "#{CVSROOT}/#{tree}/")
+  sc.recursively_scan
+  sc.group_into_changesets
+  sc.stray_commitids_to_changesets
+  sc.fill_in_changeset_data
+
+  # check out the tree from CVSROOT/#{tree} in a scratch space (CVSTMP), which
+  # is just necessary to be able to issue "cvs admin" commands, which get
+  # stored back in CVSROOT/#{tree}
+  sc.repo_surgery(CVSTMP, CVSROOT, tree)
+end
+
+BEGIN {
 require "sqlite3"
 
 class RCSFile
@@ -9,8 +46,11 @@ class RCSFile
     @revisions = {}
 
     # rcs modified to end revs in ###
-    blocks = `rlog #{file}`.force_encoding("binary").
-      split(/^(-{28}|={77})###\n?$/).reject{|b| b.match(/^(-{28}|={77})$/) }
+    blocks = []
+    IO.popen([ "rlog", file ]) do |rlog|
+      blocks = rlog.read.force_encoding("binary").
+        split(/^(-{28}|={77})###\n?$/).reject{|b| b.match(/^(-{28}|={77})$/) }
+    end
 
     if !blocks.first.match(/^RCS file/)
       raise "file #{file} didn't come out of rlog properly"
@@ -102,10 +142,10 @@ class Scanner
 
     @db.results_as_hash = true
 
-    @root = root
+    @root = (root + "/").gsub(/\/\//, "/")
   end
 
-  def recurse(dir = nil)
+  def recursively_scan(dir = nil)
     if !dir
       dir = @root
     end
@@ -113,8 +153,8 @@ class Scanner
     puts "recursing into #{dir}"
 
     Dir.glob((dir + "/*").gsub(/\/\//, "/")).each do |f|
-      if Dir.exists? f
-        recurse(f)
+      if Dir.exists?(f)
+        recursively_scan(f)
       elsif f.match(/,v$/)
         scan(f)
       end
@@ -217,8 +257,11 @@ class Scanner
       id = @db.execute("SELECT last_insert_rowid() AS id").first["id"]
       raise if !id
 
-      @db.execute("UPDATE revisions SET changeset_id = ? WHERE id IN (" +
-        s.map{|a| "?" }.join(",") + ")", [ id ] + s)
+      # avoid an exception caused by passing too many variables
+      s.each_slice(100) do |chunk|
+        @db.execute("UPDATE revisions SET changeset_id = ? WHERE id IN (" +
+          chunk.map{|a| "?" }.join(",") + ")", [ id ] + chunk)
+      end
     end
 
     if @db.execute("SELECT * FROM revisions WHERE changeset_id IS NULL").any?
@@ -277,14 +320,14 @@ class Scanner
     end
   end
 
-  def repo_surgery(checked_out_dir)
-    puts "updating repo at #{checked_out_dir}"
+  def repo_surgery(tmp_dir, cvs_root, tree)
+    puts "checking out repo \"#{tree}\" to #{tmp_dir}"
 
-    # pass -d and not -P to build and keep empty dirs
-    Dir.chdir(checked_out_dir)
-    system("cvs", "-q", "up", "-ACd")
+    Dir.chdir(tmp_dir)
+    # don't pass -P because we'll need empty dirs around for Attic changes
+    system("cvs", "-Q", "-d", cvs_root, "co", tree)
 
-    puts "adding commits to checked-out repo"
+    Dir.chdir(tmp_dir + "/#{tree}")
 
     csid = nil
     @db.execute("SELECT
@@ -306,12 +349,10 @@ class Scanner
       system("cvs", "-Q", "admin", "-C",
         "#{rev["version"]}:#{rev["commitid"]}", rev["file"].gsub(/,v$/, ""))
     end
+
+    puts "cleaning up #{tmp_dir}/#{tree}"
+
+    system("rm", "-rf", tmp_dir + "/#{tree}")
   end
 end
-
-sc = Scanner.new("openbsdv.db", "/var/cvs/src/")
-sc.recurse
-sc.group_into_changesets
-sc.stray_commitids_to_changesets
-sc.fill_in_changeset_data
-sc.repo_surgery("/usr/src.local")
+}
