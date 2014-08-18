@@ -5,19 +5,20 @@ class Scanner
     @db = SQLite3::Database.new dbf
 
     @db.execute "CREATE TABLE IF NOT EXISTS changesets
-      (id integer primary key, date integer, author text, commitid text,
-      log text)"
+      (id INTEGER PRIMARY KEY, date INTEGER, author TEXT, commitid TEXT,
+      log TEXT)"
     @db.execute "CREATE UNIQUE INDEX IF NOT EXISTS u_commitid ON changesets
       (commitid)"
 
     @db.execute "CREATE TABLE IF NOT EXISTS files
-      (id integer primary key, file text, in_attic integer)"
+      (id INTEGER PRIMARY KEY, file TEXT, first_undead_version TEXT)"
     @db.execute "CREATE UNIQUE INDEX IF NOT EXISTS u_file ON files
       (file)"
 
     @db.execute "CREATE TABLE IF NOT EXISTS revisions
-      (id integer primary key, file_id integer, changeset_id integer,
-      date integer, version text, author text, commitid text, log text)"
+      (id INTEGER PRIMARY KEY, file_id INTEGER, changeset_id INTEGER,
+      date INTEGER, version TEXT, author TEXT, commitid TEXT, log TEXT,
+      state TEXT)"
     @db.execute "CREATE UNIQUE INDEX IF NOT EXISTS u_revision ON revisions
       (file_id, version)"
     @db.execute "CREATE INDEX IF NOT EXISTS empty_changesets ON revisions
@@ -26,6 +27,8 @@ class Scanner
       (commitid, changeset_id)"
     @db.execute "CREATE INDEX IF NOT EXISTS all_revs_by_author ON revisions
       (author, date)"
+    @db.execute "CREATE INDEX IF NOT EXISTS all_revs_by_version_and_state ON
+      revisions (version, state)"
 
     @db.results_as_hash = true
 
@@ -50,22 +53,21 @@ class Scanner
 
   def scan(f)
     canfile = f[@root.length, f.length - @root.length].gsub(/(^|\/)Attic\//,
-      "/")
-    in_attic = !!f.match(/(^|\/)Attic\//)
-    puts " scanning file #{canfile}" + (in_attic ? " (in attic)" : "")
+      "/").gsub(/^\/*/, "")
+    puts " scanning file #{canfile}"
 
     rcs = RCSFile.new(f)
 
-    fid = @db.execute("SELECT id, in_attic FROM files WHERE file = ?",
-      [ canfile ]).first
+    fid = @db.execute("SELECT id, first_undead_version FROM files WHERE " +
+      "file = ?", [ canfile ]).first
     if fid
-      if fid["in_attic"].to_i != (in_attic ? 1 : 0)
-        @db.execute("UPDATE files SET in_attic = ? WHERE id = ?",
-          [ (in_attic ? 1 : 0), fid["id"] ])
+      if fid["first_undead_version"] != rcs.first_undead_version
+        @db.execute("UPDATE files SET first_undead_version = ? WHERE id = ?",
+          [ rcs.first_undead_version, fid["id"] ])
       end
     else
-      @db.execute("INSERT INTO files (file, in_attic) VALUES (?, ?)",
-        [ canfile, in_attic ? 1 : 0 ])
+      @db.execute("INSERT INTO files (file, first_undead_version) VALUES " +
+        "(?, ?)", [ canfile, rcs.first_undead_version ])
       fid = @db.execute("SELECT id FROM files WHERE file = ?",
         [ canfile ]).first
     end
@@ -81,15 +83,16 @@ class Scanner
             (rid["commitid"].to_s == "" ? "" : " from #{rid["commitid"]}")
 
           @db.execute("UPDATE revisions SET commitid = ? WHERE file_id = ? " +
-            "AND version = ?", [ rev.commitid, fid["id"], rev.revision ])
+            "AND version = ?", [ rev.commitid, fid["id"], rev.version ])
         end
       else
         puts "  inserted #{r}, authored #{rev.date} by #{rev.author}" +
           (rev.commitid ? ", commitid #{rev.commitid}" : "")
 
         @db.execute("INSERT INTO revisions (file_id, date, version, author, " +
-          "commitid, log) VALUES (?, ?, ?, ?, ?, ?)", [ fid["id"], rev.date,
-          rev.revision, rev.author, rev.commitid, rev.log ])
+          "commitid, state, log) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          [ fid["id"], rev.date, rev.version, rev.author, rev.commitid,
+          rev.state, rev.log ])
       end
     end
   end
@@ -219,17 +222,42 @@ class Scanner
   end
 
   def repo_surgery(tmp_dir, cvs_root, tree)
-    puts "checking out repo \"#{tree}\" to #{tmp_dir}"
+    puts "checking out #{tree} from #{cvs_root} to #{tmp_dir}"
 
     Dir.chdir(tmp_dir)
-    system("cvs", "-Q", "-d", cvs_root, "co", tree)
 
+    # for a deleted file to be operated by with cvs admin, it must be
+    # present in the CVS/Entries files, so check out all files at rev 1.1 so we
+    # know they will not be deleted.  otherwise cvs admin will fail silently
+    system("cvs", "-Q", "-d", cvs_root, "co", "-r1.1", tree) ||
+      raise("cvs checkout returned non-zero")
+
+    # but if any files were added on a branch or somehow have a weird history,
+    # their 1.1 revision will be dead so check out any non-dead revision of
+    # those files
+    dead11s = {}
+    @db.execute("SELECT
+    file, first_undead_version
+    FROM files
+    WHERE first_undead_version NOT LIKE '1.1'") do |rev|
+      dead11s[rev["file"]] = rev["first_undead_version"]
+    end
+
+    dead11s.each do |file,rev|
+      confile = file.gsub(/,v$/, "")
+
+      puts " checking out non-dead revision #{rev} of #{confile}"
+
+      system("cvs", "-Q", "-d", cvs_root, "co", "-r#{rev}",
+        "#{tree}/#{confile}") ||
+        raise("cvs co -r#{rev} #{confile} failed")
+    end
     Dir.chdir(tmp_dir + "/#{tree}")
 
     csid = nil
     @db.execute("SELECT
-    files.file, files.in_attic, changesets.commitid, changesets.author,
-    changesets.date, revisions.version
+    files.file, changesets.commitid, changesets.author, changesets.date,
+    revisions.version
     FROM revisions
     LEFT OUTER JOIN files ON files.id = file_id
     LEFT OUTER JOIN changesets ON revisions.changeset_id = changesets.id
@@ -242,13 +270,6 @@ class Scanner
       end
 
       puts "  #{rev["file"]} #{rev["version"]}"
-
-      if rev["in_attic"].to_i == 1
-        # for a deleted file to be operated by with cvs admin, it must be
-        # present in the CVS/Entries files, so just check out a known version
-        # that will put it there.  otherwise cvs admin will fail silently
-        system("cvs", "-Q", "up", "-r1.1", rev["file"].gsub(/,v$/, ""))
-      end
 
       output = nil
       IO.popen(ca = [ "cvs", "admin", "-C",
@@ -264,6 +285,7 @@ class Scanner
 
     puts "cleaning up #{tmp_dir}/#{tree}"
 
-    system("rm", "-rf", tmp_dir + "/#{tree}")
+    system("rm", "-rf", tmp_dir + "/#{tree}") ||
+      raise("rm of #{tmp_dir}/#{tree} failed")
   end
 end

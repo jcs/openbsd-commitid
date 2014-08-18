@@ -1,11 +1,11 @@
 require "date"
 
 class RCSRevision
-  attr_accessor :revision, :date, :author, :state, :lines, :commitid, :log
+  attr_accessor :version, :date, :author, :state, :lines, :commitid, :log
 
   # str: "revision 1.7\ndate: 1996/12/14 12:17:33;  author: mickey;  state: Exp;  lines: +3 -3;\n-Wall'ing."
   def initialize(str)
-    @revision = nil
+    @version = nil
     @date = 0
     @author = nil
     @state = nil
@@ -25,7 +25,7 @@ class RCSRevision
       lines.delete_at(2)
     end
 
-    @revision = lines.first.scan(/^revision ([\d\.]+)($|\tlocked by)/).first.first
+    @version = lines.first.scan(/^revision ([\d\.]+)($|\tlocked by)/).first.first
     # -> "1.7"
 
     # date/author/state/lines/commitid line
