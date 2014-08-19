@@ -288,4 +288,89 @@ class Scanner
     system("rm", "-rf", tmp_dir + "/#{tree}") ||
       raise("rm of #{tmp_dir}/#{tree} failed")
   end
+
+  def changelog(domain, fh)
+    last = {}
+    files = []
+
+    printlog = Proc.new{
+      fh.puts "Changes by:     #{last["author"]}@#{domain}   " <<
+        Time.at(last["date"].to_i).strftime("%Y/%m/%d %H:%M:%S")
+      fh.puts "Commitid:       #{last["commitid"]}"
+      fh.puts ""
+      fh.puts "Modified files:"
+
+      # group files by directory
+      dirs = {}
+      files.each do |f|
+        dir = f.split("/")
+        file = dir.pop.gsub(/,v$/, "")
+
+        if dir.length == 0
+          dir = "."
+        else
+          dir = dir.join("/")
+        end
+
+        dirs[dir] ||= []
+        if !dirs[dir].include?(file)
+          dirs[dir].push file
+        end
+      end
+
+      # print padded and wrapped directory and file lines
+      dirs.each do |dir,fs|
+        dl = "        #{dir}"
+        if dir.length < 15
+          (15 - dir.length).times do
+            dl += " "
+          end
+        end
+        dl += ":"
+        fl = (72 - dl.length)
+        cl = dl
+        (fs.count + 1).times do
+          if (f = fs.shift)
+            if cl.length + f.length > 72
+              fh.puts cl.gsub(/[ ]{8}/, "\t")
+              cl = " " * dl.length
+            end
+
+            cl += " " + f
+          else
+            fh.puts cl.gsub(/[ ]{8}/, "\t")
+            break
+          end
+        end
+      end
+
+      fh.puts ""
+      fh.puts "Log message:"
+      fh.puts last["log"]
+      fh.puts ""
+      fh.puts ""
+    }
+
+    @db.execute("SELECT
+    changesets.date, changesets.author, changesets.commitid, changesets.log,
+    files.file
+    FROM changesets
+    LEFT OUTER JOIN revisions ON revisions.changeset_id = changesets.id
+    LEFT OUTER JOIN files ON revisions.file_id = files.id
+    ORDER BY changesets.date, files.file") do |csfile|
+      if csfile["commitid"] == last["commitid"]
+        files.push csfile["file"]
+      else
+        if files.any?
+          printlog.call
+        end
+        files = [ csfile["file"] ]
+        last = csfile
+      end
+    end
+
+    if last.any?
+      printlog.call
+    end
+  end
 end

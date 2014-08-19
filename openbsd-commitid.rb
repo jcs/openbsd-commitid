@@ -36,4 +36,6 @@ CVSTREES.each do |tree|
   end
 
   sc.repo_surgery(CVSTMP, CVSROOT, tree)
+
+  sc.changelog("cvs.openbsd.org", File.open("Changelog-#{tree}", "w+"))
 end
