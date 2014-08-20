@@ -373,4 +373,53 @@ class Scanner
       printlog.call
     end
   end
+
+  def dup_script(script, tree)
+    script.puts "#!/bin/sh -x"
+    script.puts "if [ \"$TMPCVSDIR\" = \"\" ]; then echo 'set $TMPCVSDIR'; " +
+      "exit 1; fi"
+    script.puts "if [ \"$CVSROOT\" = \"\" ]; then echo 'set $CVSROOT'; " +
+      "exit 1; fi"
+    script.puts ""
+    script.puts "cd $TMPCVSDIR"
+    script.puts "cvs -Q -d $CVSROOT co -r1.1 #{tree} || exit 1"
+    script.puts ""
+
+    dead11s = {}
+    @db.execute("SELECT
+    file, first_undead_version
+    FROM files
+    WHERE first_undead_version NOT LIKE '1.1'") do |rev|
+      dead11s[rev["file"]] = rev["first_undead_version"]
+    end
+
+    dead11s.each do |file,rev|
+      confile = file.gsub(/,v$/, "")
+
+      script.puts "cvs -Q -d $CVSROOT co -r#{rev} '#{tree}/#{confile}' " +
+        "|| exit 1"
+    end
+
+    script.puts ""
+    script.puts "cd $TMPCVSDIR/#{tree}"
+
+    csid = nil
+    @db.execute("SELECT
+    files.file, changesets.commitid, changesets.author, changesets.date,
+    revisions.version
+    FROM revisions
+    LEFT OUTER JOIN files ON files.id = file_id
+    LEFT OUTER JOIN changesets ON revisions.changeset_id = changesets.id
+    WHERE revisions.commitid IS NULL
+    ORDER BY changesets.date ASC, files.file ASC") do |rev|
+      if csid == nil || rev["commitid"] != csid
+        script.puts "# commit #{rev["commitid"]} at #{Time.at(rev["date"])} " +
+          "by " + rev["author"]
+        csid = rev["commitid"]
+      end
+
+      script.puts "cvs admin -C #{rev["version"]}:#{rev["commitid"]} '" +
+        rev["file"].gsub(/,v$/, "") + "'"
+    end
+  end
 end

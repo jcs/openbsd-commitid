@@ -37,5 +37,9 @@ CVSTREES.each do |tree|
 
   sc.repo_surgery(CVSTMP, CVSROOT, tree)
 
-  sc.changelog("cvs.openbsd.org", File.open("Changelog-#{tree}", "w+"))
+  sc.changelog("cvs.openbsd.org", f = File.open("out/Changelog-#{tree}", "w+"))
+  f.close
+
+  sc.dup_script(f = File.open("out/add_commitids_to_#{tree}.sh", "w+"), tree)
+  f.close
 end
