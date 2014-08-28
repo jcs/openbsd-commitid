@@ -20,7 +20,7 @@ end
 PWD = Dir.pwd
 
 CVSTREES.each do |tree|
-  sc = Scanner.new(PWD + "/openbsd-#{tree}.db", "#{CVSROOT}/#{tree}/")
+  sc = Scanner.new(PWD + "/db/openbsd-#{tree}.db", "#{CVSROOT}/#{tree}/")
   sc.recursively_scan
   sc.group_into_changesets
   sc.stray_commitids_to_changesets
