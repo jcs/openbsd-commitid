@@ -1,7 +1,8 @@
 #!/usr/bin/env ruby
 
-$:.push "."
+$:.push "./lib"
 
+require "db"
 require "scanner"
 require "rcsfile"
 require "rcsrevision"
