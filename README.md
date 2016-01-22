@@ -20,10 +20,11 @@ will get modified:
 
        `$ ruby openbsd-commitid.rb`
 
-**NOTE**: `rlog` in path must be modified to end revisions with `[...]---###`,
-not just a line of dashes since those appear in some commit messages.  This
-allows the script to accurately separate each revision from `rlog`.  This
-change will not be committed, and is included as a patch here.
+**NOTE**: `rlog` in path must be modified to separate revisions and files
+with an arbitrary delimiter, not just a line of dashes since those appear in
+some commit messages.  This allows the script to accurately separate each
+revision from `rlog`.  This change might be committed, but is included here
+as a patch for now.
 
 **NOTE**: This script relies on a newly added `-C` flag to `cvs admin`, which
 sets a `commitid` in an RCS file.  This change has not yet been committed and
@@ -45,8 +46,8 @@ in the file.
 3. Fetch all revisions not already matched to a changeset, ordered by author
 then date, and bundle them into changesets.  Create a new "changesets" record
 for each, then update each of those "revisions" records with the new changeset
-id.  By sorting all commits by author name, it's possible to accurately find
-all files touched by an author in the same commit window.
+id.  By sorting all commits by author and date, it's possible to accurately
+find all files touched by an author in the same commit window.
 
 4. For each newly created "changesets" record, update them with a definitive
 timestamp, log message, author, and commitid (creating a new one if needed)

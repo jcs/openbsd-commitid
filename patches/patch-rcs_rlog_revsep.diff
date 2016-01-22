@@ -1,25 +1,128 @@
-# change revision separator to something unique, since all dashes appear inside
-# of some existing commit messages, making it impossible to accurately parse
-# rlog output
+# add -E and -S flags to rlog to allow changing RCS end and revision separators
+# to something non-standard, since lines of all dashes appear inside of some
+# existing commit messages, making it impossible to accurately parse rlog
+# output
 #
-# not to be committed
+# might be committed
 
+Index: usr.bin/rcs/rlog.1
+===================================================================
+RCS file: /var/cvs/src/usr.bin/rcs/rlog.1,v
+retrieving revision 1.24
+diff -u -p -u -p -r1.24 rlog.1
+--- usr.bin/rcs/rlog.1	3 Sep 2010 11:09:29 -0000	1.24
++++ usr.bin/rcs/rlog.1	21 Jan 2016 20:27:27 -0000
+@@ -24,8 +24,10 @@
+ .Nm
+ .Op Fl bhLNRtV
+ .Op Fl d Ns Ar dates
++.Op Fl E Ns Ar endsep
+ .Op Fl l Ns Op Ar lockers
+ .Op Fl r Ns Op Ar revs
++.Op Fl S Ns Ar revsep
+ .Op Fl s Ns Ar states
+ .Op Fl w Ns Op Ar logins
+ .Op Fl x Ns Ar suffixes
+@@ -82,6 +84,11 @@ character.
+ See also the
+ .Fl z
+ option, below.
++.It Fl E Ns Ar endsep
++Print
++.Ar endsep
++at the end of each RCS file, instead of the default string of
++77 equal signs.
+ .It Fl h
+ Print the RCS header,
+ describing a file's branch, lock details, symbolic names, etc.
+@@ -131,6 +138,11 @@ and
+ Without argument, the
+ .Fl r
+ option means the latest revision of the default branch.
++.It Fl S Ns Ar revsep
++Print
++.Ar revsep
++at the end of each RCS revision, instead of the default string of
++28 dash signs.
+ .It Fl s Ns Ar states
+ Print information about revisions whose state matches one of the
+ specified
 Index: usr.bin/rcs/rlog.c
 ===================================================================
-RCS file: /cvs/src/usr.bin/rcs/rlog.c,v
-retrieving revision 1.67
-diff -u -p -u -p -r1.67 rlog.c
---- usr.bin/rcs/rlog.c	7 Jan 2014 14:08:16 -0000	1.67
-+++ usr.bin/rcs/rlog.c	6 Aug 2014 23:38:02 -0000
-@@ -47,9 +47,9 @@ static void	rlog_file(const char *, RCSF
+RCS file: /var/cvs/src/usr.bin/rcs/rlog.c,v
+retrieving revision 1.71
+diff -u -p -u -p -r1.71 rlog.c
+--- usr.bin/rcs/rlog.c	16 Jan 2015 06:40:11 -0000	1.71
++++ usr.bin/rcs/rlog.c	21 Jan 2016 20:29:26 -0000
+@@ -46,10 +46,7 @@ static int	rlog_select_daterev(RCSFILE *
+ static void	rlog_file(const char *, RCSFILE *);
  static void	rlog_rev_print(struct rcs_delta *);
  
- #define RLOG_OPTSTRING	"d:hLl::NqRr::s:TtVw::x::z::"
+-#define RLOG_OPTSTRING	"d:hLl::NqRr::s:TtVw::x::z::"
 -#define REVSEP		"----------------------------"
-+#define REVSEP		"----------------------------###"
- #define REVEND \
+-#define REVEND \
 - "============================================================================="
-+ "=============================================================================###"
++#define RLOG_OPTSTRING	"d:E:hLl::NqRr::S:s:TtVw::x::z::"
  
  static int dflag, hflag, Lflag, lflag, rflag, tflag, Nflag, wflag;
  static char *llist = NULL;
+@@ -57,14 +54,18 @@ static char *slist = NULL;
+ static char *wlist = NULL;
+ static char *revisions = NULL;
+ static char *rlog_dates = NULL;
++static char *revsep = "----------------------------";
++static char *revend = "====================================================="
++    "========================";
+ 
+ __dead void
+ rlog_usage(void)
+ {
+ 	fprintf(stderr,
+-	    "usage: rlog [-bhLNRtV] [-ddates] [-l[lockers]] [-r[revs]]\n"
+-	    "            [-sstates] [-w[logins]] [-xsuffixes]\n"
+-	    "            [-ztz] file ...\n");
++	    "usage: rlog [-bhLNRtV] [-ddates] [-Eendsep] [-l[lockers]] "
++	    "[-r[revs]]\n"
++	    "            [-Srevsep] [-sstates] [-w[logins]] [-xsuffixes] "
++	    "[-ztz] file ...\n");
+ 
+ 	exit(1);
+ }
+@@ -85,6 +86,9 @@ rlog_main(int argc, char **argv)
+ 			dflag = 1;
+ 			rlog_dates = rcs_optarg;
+ 			break;
++		case 'E':
++			revend = rcs_optarg;
++			break;
+ 		case 'h':
+ 			hflag = 1;
+ 			break;
+@@ -110,6 +114,9 @@ rlog_main(int argc, char **argv)
+ 			rflag = 1;
+ 			revisions = rcs_optarg;
+ 			break;
++		case 'S':
++			revsep = rcs_optarg;
++			break;
+ 		case 's':
+ 			slist = rcs_optarg;
+ 			break;
+@@ -420,7 +427,7 @@ rlog_file(const char *fname, RCSFILE *fi
+ 		}
+ 	}
+ 
+-	printf("%s\n", REVEND);
++	printf("%s\n", revend);
+ }
+ 
+ static void
+@@ -501,7 +508,7 @@ rlog_rev_print(struct rcs_delta *rdp)
+ 	    (slist != NULL || lflag == 1 || wflag == 1)) && found == 0))
+ 		return;
+ 
+-	printf("%s\n", REVSEP);
++	printf("%s\n", revsep);
+ 
+ 	rcsnum_tostr(rdp->rd_num, numb, sizeof(numb));
+ 

@@ -1,16 +1,17 @@
 class RCSFile
   attr_accessor :revisions, :first_undead_version
 
+  RCSEND = "==================OPENBSD_COMMITID_RCS_END=================="
+  REVSEP = "------------------OPENBSD_COMMITID_REV_SEP------------------"
+
   def initialize(file)
     @revisions = {}
 
-    # rcs modified to end revs in ###
     blocks = []
-    IO.popen([ "rlog", file ]) do |rlog|
-      # rlog modified to end revision and file separators with ###
+    IO.popen([ "rlog", "-E#{RCSEND}", "-S#{REVSEP}", file ]) do |rlog|
       blocks = rlog.read.force_encoding("binary").
-        split(/^(-{28}|={77})###\n?$/).
-        reject{|b| b.match(/\A(-{28}|={77})\z/) }
+        split(/^(#{REVSEP}|#{RCSEND})\n?$/).
+        reject{|b| b == RCSEND || b == REVSEP }
     end
 
     if !blocks.first.match(/^RCS file/)
