@@ -88,6 +88,43 @@ class Outputter
     end
   end
 
+  def history(fh)
+    last = {}
+    files = []
+
+    printlog = Proc.new {
+      fh.puts [
+        Time.at(last["date"].to_i).strftime("%Y/%m/%d %H:%M:%S"),
+        last["author"],
+        last["commitid"],
+        last["log"].to_s.split("\n").first,
+        files.map{|f| f.gsub(/,v$/, "") }.join(", "),
+      ].join("\t")
+    }
+
+    @scanner.db.execute("SELECT
+    changesets.date, changesets.author, changesets.commitid, changesets.log,
+    files.file
+    FROM changesets
+    LEFT OUTER JOIN revisions ON revisions.changeset_id = changesets.id
+    LEFT OUTER JOIN files ON revisions.file_id = files.id
+    ORDER BY changesets.date, files.file") do |csfile|
+      if csfile["commitid"] == last["commitid"]
+        files.push csfile["file"]
+      else
+        if files.any?
+          printlog.call
+        end
+        files = [ csfile["file"] ]
+        last = csfile
+      end
+    end
+
+    if last.any?
+      printlog.call
+    end
+  end
+
   def dup_script(script, tree)
     script.puts "#!/bin/sh -x"
     script.puts "if [ \"$TMPCVSDIR\" = \"\" ]; then echo 'set $TMPCVSDIR'; " +

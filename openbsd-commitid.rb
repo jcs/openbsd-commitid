@@ -1,12 +1,12 @@
 #!/usr/bin/env ruby
 
-$:.push "./lib"
+DIR = File.dirname(__FILE__) + "/lib/"
 
-require "db"
-require "scanner"
-require "rcsfile"
-require "rcsrevision"
-require "outputter"
+require DIR + "db"
+require DIR + "scanner"
+require DIR + "rcsfile"
+require DIR + "rcsrevision"
+require DIR + "outputter"
 
 CVSROOT = "/var/cvs-commitid/"
 CVSTMP = "/var/cvs-tmp/"
@@ -41,6 +41,9 @@ CVSTREES.each do |tree|
 
   sc.outputter.changelog("cvs.openbsd.org",
     f = File.open("out/Changelog-#{tree}", "w+"))
+  f.close
+
+  sc.outputter.history(f = File.open("out/history-#{tree}", "w+"))
   f.close
 
   sc.outputter.dup_script(f = File.open("out/add_commitids_to_#{tree}.sh",
