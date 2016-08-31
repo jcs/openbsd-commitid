@@ -20,15 +20,12 @@ will get modified:
 
        `$ ruby openbsd-commitid.rb`
 
-**NOTE**: `rlog` in path must be modified to separate revisions and files
-with an arbitrary delimiter, not just a line of dashes since those appear in
-some commit messages.  This allows the script to accurately separate each
-revision from `rlog`.  This change might be committed, but is included here
-as a patch for now.
+**NOTE**: This script relies on recently added changes to OpenBSD's `rlog`
+and `cvs` tools:
 
-**NOTE**: This script relies on a newly added `-C` flag to `cvs admin`, which
-sets a `commitid` in an RCS file.  This change has not yet been committed and
-is included as a patch here.
+- `cvs admin -C` to set a revision's `commitid`
+- `rlog -E` and `rlog -S` to control the revision separators in `rlog`
+  output, since the default line of dashes appears in old commit messages
 
 ####Details
 
