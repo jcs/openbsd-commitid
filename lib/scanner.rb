@@ -1,4 +1,10 @@
 class Scanner
+  attr_accessor :outputter, :db
+
+  # how long commits by the same author with the same commit message can be
+  # from each other and still be grouped in the same changeset
+  MAX_GROUP_WINDOW = (60 * 5)
+
   def initialize(dbf, root)
     @db = Db.new dbf
     @root = (root + "/").gsub(/\/\//, "/")
@@ -98,12 +104,12 @@ class Scanner
     @db.execute("SELECT * FROM revisions WHERE changeset_id IS NULL ORDER " +
     "BY author ASC, date ASC") do |row|
       # commits by the same author with the same log message (unless they're
-      # initial imports - 1.1.1.1) within 30 seconds of each other are grouped
+      # initial imports - 1.1.1.1) within a small timeframe are grouped
       # together
       if last_row.any? && row["author"] == last_row["author"] &&
       (row["log"] == last_row["log"] || row["log"] == "Initial revision" ||
       last_row["log"] == "Initial revision") &&
-      row["date"].to_i - last_row["date"].to_i <= 30
+      row["date"].to_i - last_row["date"].to_i <= MAX_GROUP_WINDOW
         cur_set.push row["id"].to_i
       elsif !last_row.any?
         cur_set.push row["id"].to_i
