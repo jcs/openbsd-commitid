@@ -27,16 +27,6 @@ CVSTREES.each do |tree|
   sc.stray_commitids_to_changesets
   sc.fill_in_changeset_data
 
-  if tree == "src"
-    # gcc has an old INSTALL file that later became a directory, so checking
-    # out -r1.1 of the tree will throw an error when it tries to mkdir over the
-    # existing file.  move it to some other name since it was deleted long ago
-    if File.exists?(CVSROOT + "src/gnu/usr.bin/gcc/Attic/INSTALL,v")
-      system("mv", "-f", CVSROOT + "src/gnu/usr.bin/gcc/Attic/INSTALL,v",
-        CVSROOT + "src/gnu/usr.bin/gcc/Attic/INSTALL.old,v")
-    end
-  end
-
   sc.repo_surgery(CVSTMP, CVSROOT, tree)
 
   sc.outputter.changelog("cvs.openbsd.org",
