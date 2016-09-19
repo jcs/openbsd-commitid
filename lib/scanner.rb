@@ -28,14 +28,20 @@ class Scanner
   end
 
   def scan(f)
+    stat = File.stat(f)
     canfile = f[@root.length, f.length - @root.length].gsub(/(^|\/)Attic\//,
       "/").gsub(/^\/*/, "")
+
+    fid = @db.execute("SELECT id, first_undead_version, size FROM files " +
+      "WHERE file = ?", [ canfile ]).first
+    if fid && fid["size"].to_i > 0 && fid["size"].to_i == stat.size
+      return
+    end
+
     puts " scanning file #{canfile}"
 
     rcs = RCSFile.new(f)
 
-    fid = @db.execute("SELECT id, first_undead_version FROM files WHERE " +
-      "file = ?", [ canfile ]).first
     if fid
       if fid["first_undead_version"] != rcs.first_undead_version
         @db.execute("UPDATE files SET first_undead_version = ? WHERE id = ?",
@@ -71,6 +77,9 @@ class Scanner
           rev.state, rev.log ])
       end
     end
+
+    @db.execute("UPDATE files SET size = ? WHERE id = ?",
+      [ stat.size, fid["id"] ])
   end
 
   def stray_commitids_to_changesets

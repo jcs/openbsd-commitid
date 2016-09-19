@@ -11,7 +11,8 @@ class Db
       (commitid)"
 
     @db.execute "CREATE TABLE IF NOT EXISTS files
-      (id INTEGER PRIMARY KEY, file TEXT, first_undead_version TEXT)"
+      (id INTEGER PRIMARY KEY, file TEXT, first_undead_version TEXT,
+      size INTEGER)"
     @db.execute "CREATE UNIQUE INDEX IF NOT EXISTS u_file ON files
       (file)"
 
