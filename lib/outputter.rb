@@ -31,6 +31,8 @@ class Outputter
   end
 
   def changelog(domain, fh)
+    puts "writing changelog to #{fh.path}"
+
     last = {}
     files = []
 
@@ -116,6 +118,8 @@ class Outputter
   end
 
   def history(fh)
+    puts "writing history to #{fh.path}"
+
     last = {}
     files = []
 
