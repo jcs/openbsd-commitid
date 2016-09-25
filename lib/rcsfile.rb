@@ -26,17 +26,19 @@
 #
 
 class RCSFile
-  attr_accessor :revisions, :first_undead_version
+  attr_accessor :file, :revisions, :symbols, :first_undead_version
 
   RCSEND = "==================OPENBSD_COMMITID_RCS_END=================="
   REVSEP = "------------------OPENBSD_COMMITID_REV_SEP------------------"
 
   def initialize(file)
+    @file = file
     @revisions = {}
+    @symbols = {}
 
     blocks = []
     IO.popen([ "rlog", "-E#{RCSEND}", "-S#{REVSEP}", file ]) do |rlog|
-      blocks = rlog.read.force_encoding("binary").
+      blocks = rlog.read.force_encoding("iso-8859-1").
         split(/^(#{REVSEP}|#{RCSEND})\n?$/).
         reject{|b| b == RCSEND || b == REVSEP }
     end
@@ -45,9 +47,19 @@ class RCSFile
       raise "file #{file} didn't come out of rlog properly"
     end
 
-    blocks.shift
+    insymbols = false
+    blocks.shift.split("\n").each do |l|
+      if l.match(/^symbolic names:/)
+        insymbols = true
+      elsif insymbols && (m = l.match(/^\t(.+): ([\d\.]+)$/))
+        @symbols[m[1].encode("UTF-8")] = m[2].encode("UTF-8")
+      else
+        insymbols = false
+      end
+    end
+
     blocks.each do |block|
-      rev = RCSRevision.new(block)
+      rev = RCSRevision.new(self, block)
       if @revisions[rev.version]
         raise "duplicate revision #{rev.version} in #{file}"
       end
@@ -58,5 +70,9 @@ class RCSFile
       # this has nothing to do with Gem, but it has a version comparator
       sort{|a,b| Gem::Version.new(a.version) <=> Gem::Version.new(b.version) }.
       select{|r| r.state != "dead" }.first.version
+  end
+
+  def to_s
+    "RCSFile: #{@file}"
   end
 end

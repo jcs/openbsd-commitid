@@ -39,7 +39,12 @@ class Outputter
     printlog = Proc.new {
       fh.puts "Changes by:     #{last["author"]}@#{domain}   " <<
         Time.at(last["date"].to_i).strftime("%Y/%m/%d %H:%M:%S")
-      fh.puts "Commitid:       #{last["commitid"]}"
+      if last["commitid"].to_s != ""
+        fh.puts "Commitid:       #{last["commitid"]}"
+      end
+      if last["branch"].to_s != ""
+        fh.puts "Branch:         #{last["branch"]}"
+      end
       fh.puts ""
       fh.puts "Modified files:"
 
@@ -95,13 +100,13 @@ class Outputter
     }
 
     @scanner.db.execute("SELECT
-    changesets.date, changesets.author, changesets.commitid, changesets.log,
-    files.file
+    changesets.csorder, changesets.date, changesets.author,
+    changesets.commitid, changesets.log, files.file, revisions.branch
     FROM changesets
     LEFT OUTER JOIN revisions ON revisions.changeset_id = changesets.id
     LEFT OUTER JOIN files ON revisions.file_id = files.id
-    ORDER BY changesets.date, files.file") do |csfile|
-      if csfile["commitid"] == last["commitid"]
+    ORDER BY changesets.csorder, files.file") do |csfile|
+      if csfile["csorder"] == last["csorder"]
         files.push csfile["file"]
       else
         if files.any?

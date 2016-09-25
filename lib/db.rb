@@ -30,35 +30,45 @@ require "sqlite3"
 class Db
   def initialize(dbf)
     @db = SQLite3::Database.new dbf
+    @db.results_as_hash = true
 
     @db.execute "CREATE TABLE IF NOT EXISTS changesets
       (id INTEGER PRIMARY KEY, date INTEGER, author TEXT, commitid TEXT,
-      log TEXT)"
-    @db.execute "CREATE UNIQUE INDEX IF NOT EXISTS u_commitid ON changesets
+      log TEXT, branch TEXT, csorder INTEGER)"
+    @db.execute "CREATE UNIQUE INDEX IF NOT EXISTS u_cs_commitid ON changesets
       (commitid)"
+    @db.execute "CREATE UNIQUE INDEX IF NOT EXISTS u_cs_csorder ON changesets
+      (csorder)"
+    @db.execute "CREATE INDEX IF NOT EXISTS cs_branch ON changesets (branch)"
 
     @db.execute "CREATE TABLE IF NOT EXISTS files
       (id INTEGER PRIMARY KEY, file TEXT, first_undead_version TEXT,
-      size INTEGER)"
-    @db.execute "CREATE UNIQUE INDEX IF NOT EXISTS u_file ON files
+      cksum TEXT)"
+    @db.execute "CREATE UNIQUE INDEX IF NOT EXISTS u_f_file ON files
       (file)"
 
     @db.execute "CREATE TABLE IF NOT EXISTS revisions
       (id INTEGER PRIMARY KEY, file_id INTEGER, changeset_id INTEGER,
       date INTEGER, version TEXT, author TEXT, commitid TEXT, log TEXT,
-      state TEXT)"
-    @db.execute "CREATE UNIQUE INDEX IF NOT EXISTS u_revision ON revisions
+      state TEXT, branch TEXT)"
+    @db.execute "CREATE UNIQUE INDEX IF NOT EXISTS u_r_revision ON revisions
       (file_id, version)"
-    @db.execute "CREATE INDEX IF NOT EXISTS empty_changesets ON revisions
+    @db.execute "CREATE INDEX IF NOT EXISTS r_empty_changesets ON revisions
       (changeset_id)"
-    @db.execute "CREATE INDEX IF NOT EXISTS cs_by_commitid ON revisions
+    @db.execute "CREATE INDEX IF NOT EXISTS r_cs_by_commitid ON revisions
       (commitid, changeset_id)"
-    @db.execute "CREATE INDEX IF NOT EXISTS all_revs_by_author ON revisions
+    @db.execute "CREATE INDEX IF NOT EXISTS r_all_revs_by_author ON revisions
       (author, date)"
-    @db.execute "CREATE INDEX IF NOT EXISTS all_revs_by_version_and_state ON
+    @db.execute "CREATE INDEX IF NOT EXISTS r_all_revs_by_version_and_state ON
       revisions (version, state)"
+    @db.execute "CREATE INDEX IF NOT EXISTS r_branch ON revisions (branch)"
 
-    @db.results_as_hash = true
+    @db.execute("CREATE TABLE IF NOT EXISTS vendor_branches
+      (id INTEGER PRIMARY KEY, revision_id INTEGER, branch TEXT)")
+    @db.execute("CREATE INDEX IF NOT EXISTS vb_revision ON vendor_branches
+      (revision_id)")
+    @db.execute("CREATE INDEX IF NOT EXISTS vb_branch_branch ON vendor_branches
+      (branch)")
   end
 
   def execute(*args)
@@ -69,5 +79,9 @@ class Db
     else
       @db.execute(*args)
     end
+  end
+
+  def last_insert_row_id
+    @db.last_insert_row_id
   end
 end

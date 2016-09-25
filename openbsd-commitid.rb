@@ -26,43 +26,75 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-DIR = File.dirname(__FILE__) + "/lib/"
+PWD = File.dirname(__FILE__)
 
-require DIR + "db"
-require DIR + "scanner"
-require DIR + "rcsfile"
-require DIR + "rcsrevision"
-require DIR + "outputter"
+require PWD + "/lib/db"
+require PWD + "/lib/scanner"
+require PWD + "/lib/rcsfile"
+require PWD + "/lib/rcsrevision"
+require PWD + "/lib/outputter"
 
 CVSROOT = "/var/cvs-commitid/"
 CVSTMP = "/var/cvs-tmp/"
 CVSTREES = [ "src", "ports", "www", "xenocara" ]
 
+GENESIS = "01-f96d46480b33dcec5924884fef54166e169fc08d19f1d1812f5cd2d1f704219a-0000000"
+
 CVSTREES.each do |tree|
-  if Dir.exists?("#{CVSTMP}/#{tree}/CVS")
-    raise "clean out #{CVSTMP} first"
+  if !Dir.exists?("#{CVSROOT}/#{tree}")
+    next
   end
-end
 
-PWD = Dir.pwd
-
-CVSTREES.each do |tree|
   sc = Scanner.new(PWD + "/db/openbsd-#{tree}.db", "#{CVSROOT}/#{tree}/")
+
+  if tree == "src"
+    # these revisions didn't get proper commitids with the others in the
+    # changeset, so fudge them
+    sc.commitid_hacks = {
+      "sys/dev/pv/xenvar.h,v" => {
+        "1.1" => "Ij2SOB19ATTH0yEx",
+        "1.2" => "pq3FAYuwXteAsF4d",
+        "1.3" => "C8vFI0RNH9XPJUKs",
+      },
+      "usr.bin/mg/theo.c,v" => {
+        "1.144" => "gSveQVkxMLs6vRqK",
+        "1.145" => "GbEBL4CfPvDkB8hj",
+        "1.146" => "8rkHsVfUx5xgPXRB",
+      },
+    }
+
+    # some rcs files have manually edited history that we need to work around
+    sc.prev_revision_hacks = {
+      # initial history gone?
+      "sbin/isakmpd/pkcs.c,v" => { "1.4" => "0" },
+      # 1.6 gone
+      "sys/arch/sun3/sun3/machdep.c,v" => { "1.7" => "1.5" },
+    }
+  end
+
+  # walk the directory of RCS files, create a "files" record for each one,
+  # then run `rlog` on it and create a "revisions" record for each
   sc.recursively_scan
+
+  # group revisions into changesets by date/author/message, or for newer
+  # commits, their stored commitid
   sc.group_into_changesets
+
+  # make sure every revision is accounted for
   sc.stray_commitids_to_changesets
+
+  # assign a canonical date/message/order to each changeset
   sc.fill_in_changeset_data
 
+  # check out the cvs tree in CVSTMP/tree and place each dead-1.1 file at its
+  # initial non-dead revision found during `rlog`
+  sc.stage_tmp_cvs(CVSTMP, CVSROOT, tree)
+
+  # calculate a hash for each commit by running 'cvs show' on it, and store it
+  # in the commitids-{tree} file
+  sc.recalculate_commitids(CVSTMP, CVSROOT, tree, GENESIS)
+
+  # and finally, update every revision of every file and write its calculated
+  # commitid, possibly replacing the random one already there
   sc.repo_surgery(CVSTMP, CVSROOT, tree)
-
-  sc.outputter.changelog("cvs.openbsd.org",
-    f = File.open("out/Changelog-#{tree}", "w+"))
-  f.close
-
-  sc.outputter.history(f = File.open("out/history-#{tree}", "w+"))
-  f.close
-
-  sc.outputter.dup_script(f = File.open("out/add_commitids_to_#{tree}.sh",
-    "w+"), tree)
-  f.close
 end
