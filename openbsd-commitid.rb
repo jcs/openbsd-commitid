@@ -94,7 +94,8 @@ CVSTREES.each do |tree|
   # in the commitids-{tree} file
   sc.recalculate_commitids(CVSTMP, CVSROOT, tree, GENESIS)
 
-  # and finally, update every revision of every file and write its calculated
-  # commitid, possibly replacing the random one already there
-  sc.repo_surgery(CVSTMP, CVSROOT, tree)
+  # output a shell script to add/change all of the commitids in a clean repo
+  sc.outputter.dup_script(f = File.open("out/add_commitids_to_#{tree}.sh",
+    "w+"), tree)
+  f.close
 end

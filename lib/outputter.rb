@@ -162,6 +162,8 @@ class Outputter
   end
 
   def dup_script(script, tree)
+    puts "writing update script to #{script.path}"
+
     script.puts "#!/bin/sh -x"
     script.puts "if [ \"$TMPCVSDIR\" = \"\" ]; then echo 'set $TMPCVSDIR'; " +
       "exit 1; fi"
@@ -193,15 +195,14 @@ class Outputter
     csid = nil
     @scanner.db.execute("SELECT
     files.file, changesets.commitid, changesets.author, changesets.date,
-    revisions.version
+    revisions.version, changesets.branch
     FROM revisions
     LEFT OUTER JOIN files ON files.id = file_id
     LEFT OUTER JOIN changesets ON revisions.changeset_id = changesets.id
-    WHERE revisions.commitid IS NULL
-    ORDER BY changesets.date ASC, files.file ASC") do |rev|
+    ORDER BY changesets.csorder ASC, files.file ASC") do |rev|
       if csid == nil || rev["commitid"] != csid
-        script.puts "# commit #{rev["commitid"]} at #{Time.at(rev["date"])} " +
-          "by " + rev["author"]
+        script.puts "# #{Time.at(rev["date"])} by " + rev["author"] +
+          (rev["branch"].to_s == "" ? "" : " (branch #{rev["branch"]})")
         csid = rev["commitid"]
       end
 
