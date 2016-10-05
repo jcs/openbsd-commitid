@@ -38,7 +38,7 @@ CVSROOT = "/var/cvs-commitid/"
 CVSTMP = "/var/cvs-tmp/"
 CVSTREES = [ "src", "ports", "www", "xenocara" ]
 
-GENESIS = "01-f96d46480b33dcec5924884fef54166e169fc08d19f1d1812f5cd2d1f704219a-0000000"
+GENESIS = "01-14f762f4672bf0b4c0899cd15e1acdcb978a688b3c939111ed13d1958c6a2706-0000000"
 
 CVSTREES.each do |tree|
   if !Dir.exists?("#{CVSROOT}/#{tree}")
