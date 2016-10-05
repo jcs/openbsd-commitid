@@ -25,6 +25,8 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
+require "shellwords"
+
 class Outputter
   def initialize(scanner)
     @scanner = scanner
@@ -170,8 +172,10 @@ class Outputter
     script.puts "if [ \"$CVSROOT\" = \"\" ]; then echo 'set $CVSROOT'; " +
       "exit 1; fi"
     script.puts ""
+    script.puts "set -e"
+    script.puts ""
     script.puts "cd $TMPCVSDIR"
-    script.puts "cvs -Q -d $CVSROOT co -r1.1 #{tree} || exit 1"
+    script.puts "cvs -Q -d $CVSROOT co -r1.1 #{tree}"
     script.puts ""
 
     dead11s = {}
@@ -185,8 +189,8 @@ class Outputter
     dead11s.each do |file,rev|
       confile = file.gsub(/,v$/, "")
 
-      script.puts "cvs -Q -d $CVSROOT co -r#{rev} '#{tree}/#{confile}' " +
-        "|| exit 1"
+      script.puts "cvs -Q -d $CVSROOT co -r#{rev} " +
+        "#{tree}/#{Shellwords.escape(confile)}"
     end
 
     script.puts ""
@@ -204,10 +208,12 @@ class Outputter
         script.puts "# #{Time.at(rev["date"])} by " + rev["author"] +
           (rev["branch"].to_s == "" ? "" : " (branch #{rev["branch"]})")
         csid = rev["commitid"]
+        script.puts "COMMITID=\"#{Shellwords.escape(rev["commitid"])}\""
       end
 
-      script.puts "cvs admin -C #{rev["version"]}:#{rev["commitid"]} '" +
-        rev["file"].gsub(/,v$/, "") + "'"
+      fi = rev["file"].gsub(/,v$/, "")
+      script.puts "cvs admin -C #{rev["version"]}:${COMMITID} " +
+        "#{Shellwords.escape(fi)}"
     end
   end
 end
