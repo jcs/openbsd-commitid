@@ -26,7 +26,7 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-PWD = File.dirname(__FILE__)
+PWD = File.realpath(File.dirname(__FILE__))
 
 require PWD + "/lib/db"
 require PWD + "/lib/scanner"
@@ -36,9 +36,11 @@ require PWD + "/lib/outputter"
 
 CVSROOT = "/var/cvs-commitid/"
 CVSTMP = "/var/cvs-tmp/"
-CVSTREES = [ "src", "ports", "www", "xenocara" ]
+CVSTREES = [ "CVSROOT", "src", "ports", "www", "xenocara" ]
 
 GENESIS = "01-14f762f4672bf0b4c0899cd15e1acdcb978a688b3c939111ed13d1958c6a2706-0000000"
+
+File.write(PWD + "/out/commitid_genesis", "#{GENESIS}\n")
 
 CVSTREES.each do |tree|
   if !Dir.exists?("#{CVSROOT}/#{tree}")
@@ -71,7 +73,7 @@ CVSTREES.each do |tree|
       "sys/arch/sun3/sun3/machdep.c,v" => { "1.7" => "1.5" },
     }
   end
-
+if false
   # walk the directory of RCS files, create a "files" record for each one,
   # then run `rlog` on it and create a "revisions" record for each
   sc.recursively_scan
@@ -93,9 +95,12 @@ CVSTREES.each do |tree|
   # calculate a hash for each commit by running 'cvs show' on it, and store it
   # in the commitids-{tree} file
   sc.recalculate_commitids(CVSTMP, CVSROOT, tree, GENESIS)
-
+end
   # output a shell script to add/change all of the commitids in a clean repo
-  sc.outputter.dup_script(f = File.open("out/add_commitids_to_#{tree}.sh",
-    "w+"), tree)
+  sc.outputter.dup_script(f = File.open(PWD +
+    "/out/add_commitids_to_#{tree}.sh", "w+"), tree)
   f.close
+
+  system("cp", "-f", CVSROOT + "/CVSROOT/commitids-#{tree}",
+    PWD + "/out/commitids-#{tree}")
 end
